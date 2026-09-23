@@ -48,12 +48,13 @@
             </intent-filter>
         </service>
 
-        <!-- Artwork for Android Auto, which cannot send our Bearer token: read-only images. -->
+        <!-- Artwork for Android Auto, which cannot send our Bearer token (nor route over our
+             VPN): not exported; the playback service grants read access on the art prefix to
+             trusted controllers only. -->
         <provider
             android:name=".art.ArtProvider"
             android:authorities="io.github.superthom196.maa.art"
-            android:exported="true"
-            tools:ignore="ExportedContentProvider"
-            xmlns:tools="http://schemas.android.com/tools" />
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
