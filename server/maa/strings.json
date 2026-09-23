@@ -1,0 +1,28 @@
+{
+  "config_entries": {
+    "output_format": {
+      "label": "Output format",
+      "description": "Format of the files served to the app. Opus is small and transparent at 192 kbps or more; FLAC 16-bit / 44.1 kHz is lossless at CD quality (CD-quality FLAC files are served untouched).",
+      "options": {
+        "opus": "Opus (Ogg)",
+        "flac": "FLAC 16-bit / 44.1 kHz"
+      }
+    },
+    "opus_bitrate": {
+      "label": "Opus bitrate (kbps)",
+      "description": "Target bitrate for Opus output (VBR), 64 to 320 kbps."
+    },
+    "cache_max_gb": {
+      "label": "Maximum cache size (GB)",
+      "description": "Disk space the server may use for transcoded files. The least recently used files are removed when the cache grows beyond this size."
+    },
+    "clear_cache": {
+      "label": "Clear transcode cache",
+      "description": "Delete all transcoded files stored on the server.",
+      "action_label": "Clear cache"
+    }
+  },
+  "manifest": {
+    "description": "Serves whole-file transcoded tracks for the MAA Android Auto app, so it can cache tracks ahead."
+  }
+}

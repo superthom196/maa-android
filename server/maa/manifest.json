@@ -1,0 +1,13 @@
+{
+  "type": "plugin",
+  "domain": "maa",
+  "stage": "alpha",
+  "name": "MAA (Android Auto offline cache)",
+  "description": "Serves whole-file transcoded tracks for the MAA Android Auto app, so it can cache tracks ahead.",
+  "codeowners": ["@superthom196"],
+  "documentation": "https://github.com/superthom196/maa-android",
+  "multi_instance": false,
+  "builtin": false,
+  "icon": "car",
+  "requirements": []
+}
