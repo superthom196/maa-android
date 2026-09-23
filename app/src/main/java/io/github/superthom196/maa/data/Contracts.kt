@@ -68,7 +68,7 @@ interface BaseUrlProvider {
 }
 
 interface NetworkMonitor {
-    /** True when the device has a validated internet-capable network. */
+    /** True when a default network with internet capability exists (not necessarily validated: a LAN or Tailscale may reach the server without it). */
     val online: StateFlow<Boolean>
     /** Emits whenever the default network changes (Wi-Fi <-> mobile, lost, regained). */
     val changes: Flow<Unit>
