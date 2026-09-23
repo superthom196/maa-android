@@ -1,4 +1,108 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MAA</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="default_server_name">Music Assistant</string>
+
+    <!-- Connect -->
+    <string name="connect_title">Connect to Music Assistant</string>
+    <string name="connect_intro">MAA plays your Music Assistant library in Android Auto, from tracks downloaded to this phone. Pick your server, or type its address.</string>
+    <string name="connect_searching">Looking for Music Assistant on this network…</string>
+    <string name="connect_found">Servers on this network</string>
+    <string name="connect_search_again">Search again</string>
+    <string name="connect_none_found">Nothing found. The phone has to be on the same Wi-Fi as the server, or type the address below (a Tailscale address works too).</string>
+    <string name="connect_server_line">%1$s · v%2$s</string>
+    <string name="connect_manual_title">Or enter the server address</string>
+    <string name="connect_address_label">Server address</string>
+    <string name="connect_address_hint">192.168.1.50 or my-server:8095</string>
+    <string name="connect_button">Connect</string>
+    <string name="connect_bad_address">That doesn\'t look like a server address.</string>
+    <string name="connect_no_server">No Music Assistant at %1$s (%2$s)</string>
+
+    <!-- Login -->
+    <string name="login_title">Sign in</string>
+    <string name="login_intro">Use the same username and password as the Music Assistant web app. You only do this once: the phone keeps its own long-lived login.</string>
+    <string name="login_username">Username</string>
+    <string name="login_password">Password</string>
+    <string name="login_show_password">Show password</string>
+    <string name="login_hide_password">Hide password</string>
+    <string name="login_button">Sign in</string>
+    <string name="login_busy">Signing in…</string>
+    <string name="login_missing">Enter your Music Assistant username and password.</string>
+    <string name="login_bad_credentials">Wrong username or password.</string>
+    <string name="login_unreachable">Can\'t reach %1$s. Check the phone is on the same network as the server, or that Tailscale is on.</string>
+    <string name="login_failed">Sign-in failed: %1$s</string>
+    <string name="login_expired">The saved login is no longer valid. Sign in again.</string>
+
+    <!-- Home -->
+    <string name="home_via_lan">Connected via LAN</string>
+    <string name="home_via_tailscale">Connected via Remote (Tailscale)</string>
+    <string name="home_via_remote">Connected via Remote</string>
+    <string name="home_unreachable">Not reachable</string>
+    <string name="home_now_playing">Now playing</string>
+    <string name="home_nothing_playing">Nothing playing. Start something in Android Auto or from the library.</string>
+    <string name="home_browse">Browse library</string>
+    <string name="prefetch_on_phone">%1$d/%2$d on phone</string>
+
+    <!-- Plugin -->
+    <string name="plugin_checking">Checking the MAA plugin…</string>
+    <string name="plugin_found">MAA plugin %1$s</string>
+    <string name="plugin_format">Format: %1$s</string>
+    <string name="plugin_missing">MAA plugin not found on the server — install/enable it (Settings → Providers in Music Assistant).</string>
+    <string name="plugin_unknown">Couldn\'t check the MAA plugin: %1$s</string>
+    <string name="plugin_offline">server not reachable</string>
+
+    <!-- Player -->
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_previous">Previous</string>
+    <string name="player_next">Next</string>
+    <string name="player_unavailable">Player not available: %1$s</string>
+    <string name="player_error">Playback error: %1$s</string>
+
+    <!-- Browse -->
+    <string name="browse_title">Library</string>
+    <string name="browse_play">Play</string>
+    <string name="browse_empty">Nothing here.</string>
+    <string name="browse_error_sign_in">Sign in on the phone first.</string>
+    <string name="browse_error_offline">Server not reachable, and nothing saved on the phone for this.</string>
+    <string name="browse_error_disconnected">Lost the connection to the player.</string>
+    <string name="browse_error_generic">Couldn\'t load this (error %1$d).</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_signed_in_as">signed in as %1$s</string>
+    <string name="settings_lan_url">LAN address</string>
+    <string name="settings_lan_hint">http://192.168.1.50:8095</string>
+    <string name="settings_remote_url">Remote address</string>
+    <string name="settings_remote_hint">http://100.x.y.z:8095 or http://host.tailnet.ts.net:8095</string>
+    <string name="settings_urls_note">The phone uses the LAN address when it answers and the remote one (e.g. Tailscale) otherwise, so music keeps coming on mobile data.</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_saved">Saved</string>
+    <string name="settings_need_one_url">Enter at least one address.</string>
+    <string name="settings_other_server">That address is a different Music Assistant server (%1$s).</string>
+    <string name="settings_lookahead">Look-ahead</string>
+    <string name="settings_lookahead_label">Download current track + %1$d ahead</string>
+    <string name="settings_lookahead_note">These tracks are fully on the phone before they play, so playback survives dead zones.</string>
+    <string name="settings_cache">Phone cache (look-ahead + recently played)</string>
+    <string name="settings_cache_note">The look-ahead itself needs only about 6 MB per Opus track; the rest keeps recently played tracks so they replay without network.</string>
+    <string name="settings_cache_used">Used: %1$s of %2$s</string>
+    <string name="settings_clear_cache">Clear downloaded tracks</string>
+    <string name="settings_clear_cache_title">Clear downloaded tracks?</string>
+    <string name="settings_clear_cache_text">Tracks are downloaded again when needed, which needs network.</string>
+    <string name="settings_clear">Clear</string>
+    <string name="settings_plugin">MAA plugin</string>
+    <string name="settings_plugin_found">%1$s · plugin %2$s</string>
+    <string name="settings_plugin_unknown">%1$s (last known) · %2$s</string>
+    <string name="settings_refresh">Refresh</string>
+    <string name="settings_format_note">The audio format is chosen in the Music Assistant web UI: Settings → Providers → MAA.</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_sign_out_title">Sign out?</string>
+    <string name="settings_sign_out_text">The phone forgets this server and its login. Android Auto shows nothing until you sign in again.</string>
+    <string name="settings_version">MAA %1$s (%2$d)</string>
 </resources>
