@@ -60,11 +60,18 @@ A cache miss holds the request while the server transcodes (up to 180 s), then a
 | 503 | `provider_unavailable` | `Retry-After: 30` |
 | 503 | `transcode_pending` | `Retry-After: 5` |
 | 502 | `transcode_failed` | ffmpeg failed |
+| 403 | `forbidden` | token lacks library read scope |
+
+`If-None-Match` with the current ETag gets `304`. The server cache key is
+`sha1("v1|provider_instance|provider_item_id|format|details")[:32]`, where `details` is the
+provider mapping's details field (the file mtime for filesystem providers), so a cache hit
+costs a library lookup and a `stat`, and a rescanned file gets a fresh transcode.
 
 ### `POST /maa/prepare`
 
 Body `{"format":"opus-192","tracks":[{"provider":"library","item_id":"123"}, …]}` (≤10 tracks)
-→ `202 {"queued":n,"ready":m}`. Warms the server's transcode cache for the tracks the phone is
+→ `202 {"queued":n,"ready":m}`; a malformed body gets `400 bad_request`, more than 10 tracks
+`400 too_many_tracks`. Warms the server's transcode cache for the tracks the phone is
 about to download; errors are logged, never returned.
 
 ## App-side identifiers

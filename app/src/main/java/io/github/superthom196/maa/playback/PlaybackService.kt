@@ -18,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * The MediaLibraryService Android Auto binds to (and the phone UI's MediaController), playing
@@ -63,6 +64,15 @@ class PlaybackService : MediaLibraryService() {
         session = built
         recovery.session = built
         recovery.start()
+
+        // Signed out, or signed in to a different server: the queue points at tracks this app can
+        // no longer fetch (or at another server's cache keys), so drop it rather than retry forever.
+        scope.launch {
+            AppGraph.config.server.map { it?.serverId }.distinctUntilChanged().drop(1).collect {
+                player.stop()
+                player.clearMediaItems()
+            }
+        }
 
         // Keep the shuffle / repeat buttons showing the current state.
         player.addListener(object : Player.Listener {
