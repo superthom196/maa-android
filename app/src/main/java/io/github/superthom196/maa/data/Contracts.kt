@@ -43,7 +43,7 @@ data class PlaybackSettings(
     /** Tracks after the current one to download in full. The current track is always fetched too. */
     val lookahead: Int = 3,
     /** Upper bound for the on-phone audio cache. */
-    val cacheMb: Int = 2048,
+    val cacheMb: Int = 256,
 )
 
 /** Persistent configuration. StateFlows are populated before the constructor returns. */
