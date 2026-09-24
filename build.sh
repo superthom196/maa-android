@@ -15,6 +15,8 @@ if [[ "$1" == "install" ]]; then
     echo "No phone on adb. Plug it in (USB debugging on) or set PHONE=<serial|ip:port>." >&2
     exit 1
   fi
-  "$ADB" -s "$PHONE" install -r app/build/outputs/apk/release/app-release.apk
+  # Record the Play Store as installer: Android Auto hides sideloaded media apps unless its
+  # developer "Unknown sources" switch is on, and it decides by installer, not by signature.
+  "$ADB" -s "$PHONE" install -r -i com.android.vending app/build/outputs/apk/release/app-release.apk
   "$ADB" -s "$PHONE" shell am start -n io.github.superthom196.maa/.ui.MainActivity
 fi
