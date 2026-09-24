@@ -41,6 +41,24 @@ Build-Tools 36. The release build is minified and, unless a signing key is confi
 
 Requires Android 9 (API 28) or later and Music Assistant 2.10.x with the MAA plugin enabled.
 
+## Releases
+
+The app and the plugin share one version, taken from the `vX.Y.Z` tag (`PLUGIN_VERSION` in
+`server/maa/formats.py` must match). Releases are built and signed locally with
+`signing.properties`:
+
+```bash
+git tag -a vX.Y.Z -m "MAA X.Y.Z" && ./build.sh
+cp app/build/outputs/apk/release/app-release.apk maa-X.Y.Z.apk
+git archive --format=zip --prefix=maa/ -o maa-plugin-X.Y.Z.zip vX.Y.Z:server/maa
+git push origin vX.Y.Z
+gh release create vX.Y.Z --title "MAA X.Y.Z" maa-X.Y.Z.apk maa-plugin-X.Y.Z.zip
+```
+
+The Release workflow skips tags unless the repo has the `KEYSTORE_BASE64`,
+`KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` secrets. With them, it builds the signed
+APK on CI and attaches it to the tag's release.
+
 ## License
 
 GPL-3.0, see [LICENSE](LICENSE).
