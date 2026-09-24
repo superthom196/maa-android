@@ -96,9 +96,7 @@ the module is compiled in memory on every start.
 Changing the normalisation setting changes the `variant`, which is part of every cache key.
 Files cached under the old setting are never served again and age out of the cache (or clear
 them with the button). The app puts the `variant` from `/maa/info` into its own cache key, so
-phones re-download too. The upgrade from 0.1.0 works the same way: every 0.1.0 file becomes
-unreachable, so press **Clear transcode cache** once after upgrading to free the space
-straight away.
+phones re-download too.
 
 Changing any option reloads the plugin. Running transcodes are cancelled and their partial
 files deleted, and the next request starts them again.
@@ -128,8 +126,8 @@ ssh serverpi docker restart music-assistant              # MA loads providers on
 ```
 
 If an update changes the compose file, run `up -d music-assistant` instead of the restart.
-Cached files survive a restart. If the cache key scheme ever changes (the `v1` prefix in
-`formats.cache_key`), old files are never served again. The LRU trim removes them over
+Cached files survive a restart. If the cache key scheme ever changes (`CACHE_KEY_VERSION` in
+`formats.py`, now `v2`), old files are never served again. The LRU trim removes them over
 time, or you can clear them with the **Clear transcode cache** button.
 
 ## After an MA image upgrade
