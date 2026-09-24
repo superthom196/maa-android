@@ -247,7 +247,7 @@ def test_info(env: dict[str, Any]) -> None:
             assert resp.status == 200
             assert await resp.json() == {
                 "plugin": "maa",
-                "version": "0.2.0",
+                "version": "0.1.0",
                 "api": 1,
                 "server_id": "server-123",
                 "format": "opus-192",

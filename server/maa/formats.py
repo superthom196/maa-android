@@ -14,7 +14,7 @@ import math
 import re
 from dataclasses import dataclass
 
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.1.0"
 API_VERSION = 1
 
 OPUS_MIN_KBPS = 64

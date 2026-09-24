@@ -34,7 +34,7 @@ FLAC = FormatSpec(kind="flac")
 
 
 def test_versions() -> None:
-    assert formats.PLUGIN_VERSION == "0.2.0"
+    assert formats.PLUGIN_VERSION == "0.1.0"
     assert formats.API_VERSION == 1
     assert formats.SUPPORTED_FORMATS == ("opus-<64..320>", "flac-16-44")
 

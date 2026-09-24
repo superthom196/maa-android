@@ -26,7 +26,7 @@ All routes need `Authorization: Bearer <token>` (session or long-lived). Missing
 ### `GET /maa/info`
 
 ```json
-{"plugin":"maa","version":"0.2.0","api":1,"server_id":"4d79…","format":"opus-192",
+{"plugin":"maa","version":"0.1.0","api":1,"server_id":"4d79…","format":"opus-192",
  "formats":["opus-<64..320>","flac-16-44"],
  "variant":"n-14","normalization":{"enabled":true,"target":-14},
  "cache":{"files":12,"bytes":123456,"max_bytes":2147483648}}
@@ -34,10 +34,9 @@ All routes need `Authorization: Bearer <token>` (session or long-lived). Missing
 
 `variant` names the server's volume normalisation setting: `n<target>` (e.g. `n-14`, `n-17`)
 when normalisation is on, `off` when it is off. It is part of the server's cache key, and the app
-must add it to its own cache key too. Then a change of the setting (or the upgrade from 0.1.0,
-whose files were never normalised) makes phones fetch fresh copies instead of playing stale
-ones. `normalization` gives the same setting in structured form (`target` in LUFS, reported even
-when disabled). Fields added in 0.2.0: `variant`, `normalization`.
+must add it to its own cache key too. Then a change of the setting makes phones fetch fresh copies
+instead of playing stale ones. `normalization` gives the same setting in structured form (`target`
+in LUFS, reported even when disabled).
 
 `format` is the one chosen in the MA admin UI (Settings → Providers → MAA). The app requests
 that format explicitly on every track URL, so a change on the server never mixes formats in
