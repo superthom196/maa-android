@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import io.github.superthom196.maa.AppGraph
+import io.github.superthom196.maa.data.syncPluginInfo
 import io.github.superthom196.maa.ui.MainActivity
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +65,13 @@ class PlaybackService : MediaLibraryService() {
         session = built
         recovery.session = built
         recovery.start()
+
+        // Android Auto can start this service without the phone UI ever opening: pick up the
+        // server's current format / normalisation variant here too (best effort).
+        scope.launch(Dispatchers.IO) {
+            runCatching { AppGraph.api.syncPluginInfo(AppGraph.config) }
+                .onFailure { android.util.Log.i("MAA/Service", "plugin info not refreshed: ${it.message}") }
+        }
 
         // Signed out, or signed in to a different server: the queue points at tracks this app can
         // no longer fetch (or at another server's cache keys), so drop it rather than retry forever.

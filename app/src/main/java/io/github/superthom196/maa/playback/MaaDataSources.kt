@@ -78,6 +78,6 @@ class MaaDataSources(
     fun keyFor(maaUri: String): String {
         val serverId = config.server.value?.serverId
         val (ref, format) = StreamUris.parse(maaUri) ?: return maaUri
-        return if (serverId == null) maaUri else StreamUris.cacheKey(serverId, ref, format)
+        return if (serverId == null) maaUri else StreamUris.cacheKey(serverId, ref, format, StreamUris.variant(maaUri))
     }
 }

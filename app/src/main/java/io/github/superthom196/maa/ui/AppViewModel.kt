@@ -12,6 +12,7 @@ import io.github.superthom196.maa.data.DiscoveredServer
 import io.github.superthom196.maa.data.MaaInfo
 import io.github.superthom196.maa.data.MaApiException
 import io.github.superthom196.maa.data.NotLoggedInException
+import io.github.superthom196.maa.data.syncPluginInfo
 import io.github.superthom196.maa.data.OfflineException
 import io.github.superthom196.maa.data.ServerConfig
 import io.github.superthom196.maa.data.ServerInfo
@@ -261,8 +262,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(plugin = PluginState.Checking) }
         probeJob = viewModelScope.launch {
             val state = try {
-                val info = api.maaInfo()
-                config.updateServer { if (it.format == info.format && it.pluginSeen) it else it.copy(format = info.format, pluginSeen = true) }
+                val info = api.syncPluginInfo(config)
                 PluginState.Found(info)
             } catch (e: CancellationException) {
                 throw e

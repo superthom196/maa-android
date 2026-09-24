@@ -36,6 +36,24 @@ class StreamUrisTest {
         assertEquals("v1/srv/library/9/opus-192", StreamUris.cacheKey("srv", TrackRef("library", "9"), "opus-192"))
     }
 
+    @Test fun variantRidesInUriAndKeyButNotInPluginUrl() {
+        val ref = TrackRef("library", "7")
+        val uri = StreamUris.trackUri(ref, "flac-16-44", "n-17")
+        assertEquals("n-17", StreamUris.variant(uri))
+        assertEquals(ref to "flac-16-44", StreamUris.parse(uri))
+        assertEquals("v1/srv/library/7/flac-16-44_n-17", StreamUris.cacheKey("srv", ref, "flac-16-44", "n-17"))
+        assertEquals(
+            "http://h:8095/maa/track?provider=library&item_id=7&format=flac-16-44",
+            StreamUris.httpUrl("http://h:8095", uri),
+        )
+    }
+
+    @Test fun noVariantKeepsOldKeys() {
+        val ref = TrackRef("library", "7")
+        assertEquals("", StreamUris.variant(StreamUris.trackUri(ref, "opus-192")))
+        assertEquals(StreamUris.cacheKey("srv", ref, "opus-192"), StreamUris.cacheKey("srv", ref, "opus-192", ""))
+    }
+
     @Test fun mimeTypes() {
         assertEquals("audio/flac", StreamUris.mimeType("flac-16-44"))
         assertEquals("audio/ogg", StreamUris.mimeType("opus-192"))

@@ -18,8 +18,16 @@ object StreamUris {
     const val HOST = "track"
     private const val PREFIX = "$SCHEME://$HOST?"
 
-    fun trackUri(ref: TrackRef, format: String): String =
-        PREFIX + query(ref, format)
+    /**
+     * [variant] (the plugin's normalisation setting, see ServerConfig.variant) rides along as `v=`
+     * so the data source can key the cache by it; the server ignores it.
+     */
+    fun trackUri(ref: TrackRef, format: String, variant: String = ""): String =
+        PREFIX + query(ref, format) + (if (variant.isEmpty()) "" else "&v=${encode(variant)}")
+
+    /** The `v=` variant of a [trackUri], "" when absent. */
+    fun variant(uri: String): String =
+        uri.substringAfter('?', "").split('&').firstOrNull { it.startsWith("v=") }?.let { decode(it.removePrefix("v=")) }.orEmpty()
 
     /** Parses a [trackUri]; null for anything else. */
     fun parse(uri: String): Pair<TrackRef, String>? {
@@ -34,8 +42,9 @@ object StreamUris {
         return TrackRef(provider, itemId) to format
     }
 
-    fun cacheKey(serverId: String, ref: TrackRef, format: String): String =
-        listOf("v1", serverId, ref.provider, ref.itemId, format).joinToString("/") { encode(it) }
+    fun cacheKey(serverId: String, ref: TrackRef, format: String, variant: String = ""): String =
+        listOf("v1", serverId, ref.provider, ref.itemId, if (variant.isEmpty()) format else "${format}_$variant")
+            .joinToString("/") { encode(it) }
 
     /** The plugin URL for a [trackUri] on [base]. */
     fun httpUrl(base: String, maaUri: String): String {

@@ -80,8 +80,8 @@ class MediaItemMapper(private val context: Context, private val config: ConfigSt
         groupTitle?.let { md.setExtras(Bundle().apply { putString(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE, it) }) }
         return MediaItem.Builder()
             .setMediaId(BrowseId.Track(ctx, item.provider, item.itemId).encode())
-            .setUri(Uri.parse(StreamUris.trackUri(ref, format)))
-            .setCustomCacheKey(StreamUris.cacheKey(server?.serverId.orEmpty(), ref, format))
+            .setUri(Uri.parse(StreamUris.trackUri(ref, format, server?.variant.orEmpty())))
+            .setCustomCacheKey(StreamUris.cacheKey(server?.serverId.orEmpty(), ref, format, server?.variant.orEmpty()))
             .setMimeType(StreamUris.mimeType(format))
             .setMediaMetadata(md.build())
             .build()

@@ -29,6 +29,11 @@ data class ServerConfig(
     val format: String = DEFAULT_FORMAT,
     /** Whether the server's MAA plugin answered /maa/info last time we asked. */
     val pluginSeen: Boolean = false,
+    /**
+     * The plugin's processing variant (e.g. "n-17": normalised to -17 LUFS). Part of the phone's
+     * cache key, so changing normalisation on the server never replays stale copies.
+     */
+    val variant: String = "",
 ) {
     val urls: List<String> get() = listOfNotNull(lanUrl, remoteUrl).distinct()
 
@@ -94,6 +99,8 @@ data class MaaInfo(
     val format: String,
     val formats: List<String> = emptyList(),
     val cache: MaaCacheStats? = null,
+    /** Processing variant for cache keys; absent on plugin 0.1.x (no normalisation). */
+    val variant: String? = null,
 )
 
 data class SearchResults(
