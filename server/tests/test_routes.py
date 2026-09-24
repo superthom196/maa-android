@@ -30,8 +30,9 @@ from music_assistant_models.errors import MediaNotFoundError  # noqa: E402
 from music_assistant_models.media_items import AudioFormat  # noqa: E402
 from music_assistant_models.streamdetails import StreamDetails  # noqa: E402
 
+from conftest import ffmpeg_calls  # noqa: E402
 from maa import routes  # noqa: E402
-from maa.formats import FormatSpec, cache_key  # noqa: E402
+from maa.formats import FormatSpec, Normalization, cache_key, limiter_filters  # noqa: E402
 from maa.transcode import TranscodeCache  # noqa: E402
 
 TOKEN = "good-token"
@@ -153,6 +154,14 @@ def env(tmp_path: Path, fake_ffmpeg: Path) -> dict[str, Any]:
 
         return gen()
 
+    analyses: dict[str, Any] = {}
+
+    async def get_audio_analysis(
+        item_id: str, provider: str, media_type: Any = None, priority: Any = None
+    ) -> Any:
+        assert priority == ("loudness_analysis",)
+        return analyses.get(item_id)
+
     webserver = FakeWebserver()
     mass = SimpleNamespace(
         server_id="server-123",
@@ -160,7 +169,10 @@ def env(tmp_path: Path, fake_ffmpeg: Path) -> dict[str, Any]:
         config=SimpleNamespace(get=lambda key, default=None: {"gone": {"domain": "gone"}}),
         music=SimpleNamespace(tracks=FakeTracks(library)),
         get_provider=lambda name: prov if name in (prov.instance_id, prov.domain) else None,
-        streams=SimpleNamespace(audio=SimpleNamespace(get_media_stream=get_media_stream)),
+        streams=SimpleNamespace(
+            audio=SimpleNamespace(get_media_stream=get_media_stream),
+            audio_analysis=SimpleNamespace(get_audio_analysis=get_audio_analysis),
+        ),
     )
     return {
         "mass": mass,
@@ -168,10 +180,16 @@ def env(tmp_path: Path, fake_ffmpeg: Path) -> dict[str, Any]:
         "streamed": streamed,
         "cache_dir": tmp_path / "cache",
         "cd_file": cd_file,
+        "analyses": analyses,
+        "tmp_path": tmp_path,
     }
 
 
-async def _client(env: dict[str, Any]) -> tuple[TestClient, Any]:
+OFF = Normalization(enabled=False, target=-14)
+ON = Normalization(enabled=True, target=-14)
+
+
+async def _client(env: dict[str, Any], norm: Normalization = OFF) -> tuple[TestClient, Any]:
     mass = env["mass"]
     cache = TranscodeCache(str(env["cache_dir"]), 10**9)
     await cache.setup()
@@ -180,6 +198,7 @@ async def _client(env: dict[str, Any]) -> tuple[TestClient, Any]:
         logger=logging.getLogger("test.maa"),
         transcode_cache=cache,
         configured_format=FormatSpec("opus", 192),
+        normalization=norm,
     )
     unregister = routes.MaaApi(plugin).register()  # type: ignore[arg-type]
     assert len(unregister) == 4
@@ -228,11 +247,13 @@ def test_info(env: dict[str, Any]) -> None:
             assert resp.status == 200
             assert await resp.json() == {
                 "plugin": "maa",
-                "version": "0.1.0",
+                "version": "0.2.0",
                 "api": 1,
                 "server_id": "server-123",
                 "format": "opus-192",
                 "formats": ["opus-<64..320>", "flac-16-44"],
+                "variant": "off",
+                "normalization": {"enabled": False, "target": -14},
                 "cache": {"files": 0, "bytes": 0, "max_bytes": 10**9},
             }
         finally:
@@ -289,6 +310,7 @@ def test_track_transcode_then_cached(env: dict[str, Any]) -> None:
             assert resp.headers["ETag"] == f'"{key}"'
             assert resp.headers["Accept-Ranges"] == "bytes"
             assert resp.headers["Cache-Control"] == "private, max-age=31536000, immutable"
+            assert resp.headers["X-MAA-Gain"] == "0.00"
             # the PCM request mirrors the source format
             _, pcm = env["streamed"][0]
             assert (pcm.content_type, pcm.sample_rate, pcm.bit_depth, pcm.channels) == (
@@ -449,6 +471,87 @@ def test_prepare(env: dict[str, Any]) -> None:
             assert (await resp.json())["error"] == "bad_format"
             resp = await client.post("/maa/prepare", json={"tracks": []})
             assert resp.status == 401
+        finally:
+            await client.close()
+            await plugin.transcode_cache.close()
+
+    run(go())
+
+
+def test_normalized_track_two_stage(env: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FAKE_LUFS", "-8.0")
+    monkeypatch.setenv("FAKE_TP", "0.5")
+
+    async def go() -> None:
+        client, plugin = await _client(env, ON)
+        prov = env["prov"]
+        try:
+            resp = await client.get("/maa/info", headers=AUTH)
+            info = await resp.json()
+            assert info["variant"] == "n-14"
+            assert info["normalization"] == {"enabled": True, "target": -14}
+
+            resp = await client.get("/maa/track?provider=library&item_id=1", headers=AUTH)
+            assert resp.status == 200
+            assert resp.headers["X-MAA-Source"] == "transcoded"
+            assert resp.headers["X-MAA-Gain"] == "-6.00"
+            key = cache_key(prov.instance_id, "hires.flac", "opus-192", "1700000000", "n-14")
+            assert resp.headers["ETag"] == f'"{key}"'
+            assert len(ffmpeg_calls(env["tmp_path"])) == 2  # measure + encode
+
+            # the hit reads the gain from the sidecar
+            resp = await client.get("/maa/track?provider=library&item_id=1", headers=AUTH)
+            assert resp.headers["X-MAA-Source"] == "cached"
+            assert resp.headers["X-MAA-Gain"] == "-6.00"
+            resp = await client.head("/maa/track?provider=library&item_id=1", headers=AUTH)
+            assert resp.headers["X-MAA-Gain"] == "-6.00"
+        finally:
+            await client.close()
+            await plugin.transcode_cache.close()
+
+    run(go())
+
+
+def test_normalized_uses_ma_analysis_and_disables_passthrough(env: dict[str, Any]) -> None:
+    env["analyses"]["cd.flac"] = SimpleNamespace(loudness_integrated=-20.0, true_peak=None)
+
+    async def go() -> None:
+        client, plugin = await _client(env, ON)
+        try:
+            resp = await client.get(
+                "/maa/track?provider=library&item_id=2&format=flac-16-44", headers=AUTH
+            )
+            assert resp.status == 200
+            # CD-quality FLAC is not passed through when normalising
+            assert resp.headers["X-MAA-Source"] == "transcoded"
+            assert resp.headers["X-MAA-Gain"] == "6.00"
+            (call,) = ffmpeg_calls(env["tmp_path"])  # known loudness: one stage
+            af = call[call.index("-af") + 1]
+            # unknown true peak: a full-scale master is assumed, so +6 dB needs the limiter
+            assert af.startswith(f"volume=6.00dB,{limiter_filters(FormatSpec('flac'))},aresample")
+        finally:
+            await client.close()
+            await plugin.transcode_cache.close()
+
+    run(go())
+
+
+def test_provider_loudness_wins(env: dict[str, Any]) -> None:
+    env["analyses"]["hires.flac"] = SimpleNamespace(loudness_integrated=-20.0, true_peak=-3.0)
+    original = env["prov"]._sd_factory
+
+    def with_loudness(item_id: str) -> StreamDetails:
+        sd = original(item_id)
+        sd.loudness = -11.5
+        return sd
+
+    env["prov"]._sd_factory = with_loudness
+
+    async def go() -> None:
+        client, plugin = await _client(env, ON)
+        try:
+            resp = await client.get("/maa/track?provider=library&item_id=1", headers=AUTH)
+            assert resp.headers["X-MAA-Gain"] == "-2.50"
         finally:
             await client.close()
             await plugin.transcode_cache.close()

@@ -26,10 +26,18 @@ All routes need `Authorization: Bearer <token>` (session or long-lived). Missing
 ### `GET /maa/info`
 
 ```json
-{"plugin":"maa","version":"0.1.0","api":1,"server_id":"4d79…","format":"opus-192",
+{"plugin":"maa","version":"0.2.0","api":1,"server_id":"4d79…","format":"opus-192",
  "formats":["opus-<64..320>","flac-16-44"],
- "cache":{"files":12,"bytes":123456,"max_bytes":21474836480}}
+ "variant":"n-14","normalization":{"enabled":true,"target":-14},
+ "cache":{"files":12,"bytes":123456,"max_bytes":2147483648}}
 ```
+
+`variant` names the server's volume normalisation setting: `n<target>` (e.g. `n-14`, `n-17`)
+when normalisation is on, `off` when it is off. It is part of the server's cache key, and the app
+must add it to its own cache key too. Then a change of the setting (or the upgrade from 0.1.0,
+whose files were never normalised) makes phones fetch fresh copies instead of playing stale
+ones. `normalization` gives the same setting in structured form (`target` in LUFS, reported even
+when disabled). Fields added in 0.2.0: `variant`, `normalization`.
 
 `format` is the one chosen in the MA admin UI (Settings → Providers → MAA). The app requests
 that format explicitly on every track URL, so a change on the server never mixes formats in
@@ -48,7 +56,8 @@ real length and supports ranges:
 | `Content-Length`, `Accept-Ranges: bytes`, `ETag`, `Last-Modified` | as for any static file; `Range` → `206` |
 | `Cache-Control` | `private, max-age=31536000, immutable` |
 | `X-MAA-Format` | the format served |
-| `X-MAA-Source` | `passthrough` (source already FLAC ≤16/44.1, served raw), `cached`, `transcoded` |
+| `X-MAA-Source` | `passthrough` (source already FLAC ≤16/44.1, served raw; only when normalisation is off), `cached`, `transcoded` |
+| `X-MAA-Gain` | normalisation gain applied to this file in dB, 2 decimals, e.g. `-6.30` (`0.00` with normalisation off or for passthrough). Informational |
 
 A cache miss holds the request while the server transcodes (up to 180 s), then answers
 `503 {"error":"transcode_pending"}` with `Retry-After: 5` while the job carries on.
@@ -63,9 +72,20 @@ A cache miss holds the request while the server transcodes (up to 180 s), then a
 | 403 | `forbidden` | token lacks library read scope |
 
 `If-None-Match` with the current ETag gets `304`. The server cache key is
-`sha1("v1|provider_instance|provider_item_id|format|details")[:32]`, where `details` is the
-provider mapping's details field (the file mtime for filesystem providers), so a cache hit
-costs a library lookup and a `stat`, and a rescanned file gets a fresh transcode.
+`sha1("v2|provider_instance|provider_item_id|format|details|variant")[:32]`, where `details` is
+the provider mapping's details field (the file mtime for filesystem providers). A cache hit
+therefore costs a library lookup and a `stat`, a rescanned file gets a fresh transcode, and
+files of another normalisation variant (or from 0.1.0) are never served.
+
+Volume normalisation works like Music Assistant's own measured normalisation. The gain is
+`target - integrated loudness`, and it is applied in float before resampling, dithering and
+encoding. The loudness comes, in order, from the provider, from MA's stored EBU R128 analysis,
+from the plugin's own earlier reading, or else from a measurement pass. A cache miss on an
+unmeasured track therefore does two passes (measure, then encode), about 20–30 s for a 4–5 min
+track on the Pi. A limiter is added only when the gained true peak would exceed the ceiling
+(-1 dBTP for FLAC; for Opus the ceiling is lower, to leave room for codec overshoot). Output
+lands at target ±0.5 LU with a true peak ≤ -1 dBTP. A heavily limited track can end up below
+the target.
 
 ### `POST /maa/prepare`
 

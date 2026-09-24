@@ -12,8 +12,9 @@ Routes (fixed paths, parameters in the query string because item ids can contain
 - ``POST /maa/prepare`` with ``{"format": "...", "tracks": [{"provider", "item_id"}, ...]}``
 
 Fast cache hits: the cache key is derived from the provider mapping only (provider instance,
-provider item id, format name and the mapping's ``details`` - the file mtime for filesystem
-providers), so a hit costs one library lookup and a stat, and never resolves stream details.
+provider item id, format name, the mapping's ``details`` - the file mtime for filesystem
+providers - and the normalisation variant), so a hit costs one library lookup and a stat (plus
+reading the small gain sidecar), and never resolves stream details.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from music_assistant_models.errors import (
 from music_assistant_models.media_items import AudioFormat
 
 from music_assistant.constants import CONF_PROVIDERS
+from music_assistant.controllers.streams.audio_analysis import LOUDNESS_ANALYSIS_DOMAIN
 from music_assistant.controllers.webserver.helpers.auth_middleware import (
     get_authenticated_user,
     has_scope,
@@ -47,9 +49,12 @@ from .formats import (
     PLUGIN_VERSION,
     SUPPORTED_FORMATS,
     FormatSpec,
+    GainPlan,
+    Normalization,
     cache_key,
     can_passthrough,
     parse,
+    source_key,
 )
 from .transcode import TranscodeError
 
@@ -286,7 +291,13 @@ class MaaApi:
         )
 
     def _serve_file(
-        self, request: web.Request, path: str, spec: FormatSpec, etag_value: str, source: str
+        self,
+        request: web.Request,
+        path: str,
+        spec: FormatSpec,
+        etag_value: str,
+        source: str,
+        gain_db: float | None = None,
     ) -> web.StreamResponse:
         headers = {
             "Content-Type": spec.mime,
@@ -295,9 +306,99 @@ class MaaApi:
             "X-MAA-Format": spec.name,
             "X-MAA-Source": source,
         }
+        if gain_db is not None:
+            headers["X-MAA-Gain"] = f"{gain_db:.2f}"
         if _etag_matches(request.headers.get("If-None-Match"), etag_value):
             return web.Response(status=304, headers={**headers, "ETag": f'"{etag_value}"'})
         return _FixedEtagFileResponse(path, etag_value, headers)
+
+    async def _serve_cached(
+        self, request: web.Request, path: str, spec: FormatSpec, key: str, source: str
+    ) -> web.StreamResponse:
+        meta = await self.provider.transcode_cache.read_meta(key)
+        gain = meta.get("gain_db") if meta else None
+        return self._serve_file(
+            request,
+            path,
+            spec,
+            key,
+            source,
+            float(gain) if isinstance(gain, (int, float)) else None,
+        )
+
+    async def _gain_plan(
+        self, norm: Normalization, resolved: ResolvedTrack, streamdetails: StreamDetails
+    ) -> GainPlan:
+        """
+        Return what is known about the track's loudness, in Music Assistant's order.
+
+        The provider's own value first, then MA's stored EBU R128 analysis (the lookup MA
+        does before playback); without either the job measures the track itself.
+        """
+        if not norm.enabled:
+            return GainPlan()
+        src_key = source_key(resolved.provider_instance, resolved.item_id, resolved.version)
+        if streamdetails.loudness is not None:
+            return GainPlan(
+                normalize=True,
+                target=norm.target,
+                loudness=float(streamdetails.loudness),
+                loudness_source="provider",
+                source_key=src_key,
+            )
+        try:
+            analysis = await self.mass.streams.audio_analysis.get_audio_analysis(
+                streamdetails.item_id,
+                streamdetails.provider,
+                media_type=MediaType.TRACK,
+                priority=(LOUDNESS_ANALYSIS_DOMAIN,),
+            )
+        except Exception as err:
+            self.logger.debug("Audio analysis lookup failed for %s: %s", resolved.item_id, err)
+            analysis = None
+        if analysis is not None and analysis.loudness_integrated is not None:
+            return GainPlan(
+                normalize=True,
+                target=norm.target,
+                loudness=round(float(analysis.loudness_integrated), 2),
+                true_peak=analysis.true_peak,
+                loudness_source="analysis",
+                source_key=src_key,
+            )
+        return GainPlan(normalize=True, target=norm.target, source_key=src_key)
+
+    async def _start_or_passthrough(
+        self, resolved: ResolvedTrack, spec: FormatSpec, key: str, norm: Normalization
+    ) -> tuple[asyncio.Task[str] | None, str | None]:
+        """
+        Resolve stream details for a miss: return (job, None) or (None, passthrough path).
+
+        Passthrough is only possible with normalisation off: a raw master served as-is would
+        defeat it.
+        """
+        streamdetails = await self._get_stream_details(resolved)
+        audio_format = streamdetails.audio_format
+        if not norm.enabled and can_passthrough(
+            spec,
+            audio_format.content_type,
+            audio_format.bit_depth,
+            audio_format.sample_rate,
+            audio_format.channels,
+            streamdetails.stream_type,
+            streamdetails.path,
+        ):
+            # the path comes from the provider's stream details, never from the request
+            return None, str(streamdetails.path)
+        plan = await self._gain_plan(norm, resolved, streamdetails)
+        task = self.provider.transcode_cache.ensure_job(
+            key,
+            spec,
+            streamdetails,
+            pcm_format_for(streamdetails),
+            self._stream_factory,
+            plan,
+        )
+        return task, None
 
     async def _get_stream_details(self, resolved: ResolvedTrack) -> StreamDetails:
         try:
@@ -317,6 +418,7 @@ class MaaApi:
             return denied
         cache = self.provider.transcode_cache
         stats = await cache.stats()
+        norm = self.provider.normalization
         return web.json_response(
             {
                 "plugin": "maa",
@@ -325,6 +427,8 @@ class MaaApi:
                 "server_id": self.mass.server_id,
                 "format": self.provider.configured_format.name,
                 "formats": list(SUPPORTED_FORMATS),
+                "variant": norm.variant,
+                "normalization": {"enabled": norm.enabled, "target": norm.target},
                 "cache": {
                     "files": stats["files"],
                     "bytes": stats["bytes"],
@@ -348,43 +452,33 @@ class MaaApi:
                 400, "bad_format", f"Unsupported format {fmt!r}, use one of {SUPPORTED_FORMATS}"
             )
         cache = self.provider.transcode_cache
+        norm = self.provider.normalization
         try:
             resolved = await resolve_track(self.mass, provider, item_id)
             key = cache_key(
-                resolved.provider_instance, resolved.item_id, spec.name, resolved.version
+                resolved.provider_instance,
+                resolved.item_id,
+                spec.name,
+                resolved.version,
+                norm.variant,
             )
 
             # fast path: finished file, no stream details needed
             if (path := await cache.lookup(key, spec)) is not None:
-                return self._serve_file(request, path, spec, key, "cached")
+                return await self._serve_cached(request, path, spec, key, "cached")
 
             if (task := cache.pending(key)) is None:
-                streamdetails = await self._get_stream_details(resolved)
-                audio_format = streamdetails.audio_format
-                if can_passthrough(
-                    spec,
-                    audio_format.content_type,
-                    audio_format.bit_depth,
-                    audio_format.sample_rate,
-                    audio_format.channels,
-                    streamdetails.stream_type,
-                    streamdetails.path,
-                ):
-                    # the path comes from the provider's stream details, never from the request
-                    source_path = str(streamdetails.path)
+                task, source_path = await self._start_or_passthrough(resolved, spec, key, norm)
+                if source_path is not None:
                     try:
                         st = await asyncio.to_thread(os.stat, source_path)
                     except OSError as err:
                         raise _not_found(f"Source file is not accessible: {err}") from err
                     etag_value = f"pt-{st.st_size}-{int(st.st_mtime)}"
-                    return self._serve_file(request, source_path, spec, etag_value, "passthrough")
-                task = cache.ensure_job(
-                    key,
-                    spec,
-                    streamdetails,
-                    pcm_format_for(streamdetails),
-                    self._stream_factory,
-                )
+                    return self._serve_file(
+                        request, source_path, spec, etag_value, "passthrough", 0.0
+                    )
+            assert task is not None
         except ApiError as err:
             return err.response()
         except TranscodeError as err:
@@ -416,7 +510,7 @@ class MaaApi:
         except Exception as err:
             self.logger.warning("Transcode of %s/%s failed: %s", provider, item_id, err)
             return error_response(502, "transcode_failed", str(err) or type(err).__name__)
-        return self._serve_file(request, path, spec, key, "transcoded")
+        return await self._serve_cached(request, path, spec, key, "transcoded")
 
     async def handle_prepare(self, request: web.Request) -> web.StreamResponse:
         """Queue background transcodes for up to 10 tracks."""
@@ -467,31 +561,22 @@ class MaaApi:
     async def _prepare_one(self, spec: FormatSpec, provider: str, item_id: str) -> str | None:
         """Start the transcode for one track; return 'ready', 'queued' or None on error."""
         cache = self.provider.transcode_cache
+        norm = self.provider.normalization
         try:
             resolved = await resolve_track(self.mass, provider, item_id)
             key = cache_key(
-                resolved.provider_instance, resolved.item_id, spec.name, resolved.version
+                resolved.provider_instance,
+                resolved.item_id,
+                spec.name,
+                resolved.version,
+                norm.variant,
             )
             if await cache.lookup(key, spec) is not None:
                 return "ready"
             if cache.pending(key) is not None:
                 return "queued"
-            streamdetails = await self._get_stream_details(resolved)
-            audio_format = streamdetails.audio_format
-            if can_passthrough(
-                spec,
-                audio_format.content_type,
-                audio_format.bit_depth,
-                audio_format.sample_rate,
-                audio_format.channels,
-                streamdetails.stream_type,
-                streamdetails.path,
-            ):
-                return "ready"
-            cache.ensure_job(
-                key, spec, streamdetails, pcm_format_for(streamdetails), self._stream_factory
-            )
-            return "queued"
+            task, _ = await self._start_or_passthrough(resolved, spec, key, norm)
+            return "queued" if task is not None else "ready"
         except ApiError as err:
             self.logger.info("Prepare %s/%s skipped: %s", provider, item_id, err.message)
         except Exception as err:

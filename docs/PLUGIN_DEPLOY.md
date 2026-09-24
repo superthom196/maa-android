@@ -76,14 +76,29 @@ the module is compiled in memory on every start.
    The alpha badge is expected.
 2. Options:
    - **Output format**: Opus (Ogg), the default, or FLAC 16-bit / 44.1 kHz. CD-quality FLAC
-     sources are served untouched in FLAC mode.
+     sources are served untouched in FLAC mode when normalisation is off.
    - **Opus bitrate**: 64–320 kbps, default 192. Only shown for Opus.
+   - **Volume normalisation**: on by default. Brings every track to the same loudness,
+     like MA's own players do. It uses MA's loudness analysis when there is one; otherwise
+     the first request for a track measures it in an extra pass. Readings are kept in
+     `/data/.cache/maa/loudness/`. A limiter is only added when a boosted track would peak
+     above -1 dBTP. With normalisation on, CD-quality FLAC is not passed through untouched.
+   - **Target loudness (LUFS)**: defaults to MA's global normalisation target (Settings →
+     Core → Streams → volume normalisation target). In MA 2.10.3 that is -14 unless it has
+     been changed. The range is -30 to -6.
    - **Maximum cache size (GB)**: 1–50, default 2. When the cache grows past this, the least
      recently served files are deleted first.
    - **Clear transcode cache**: deletes every cached file. Transcodes that are still
-     running are not affected.
+     running are not affected. Stored loudness readings are cleared too.
 3. When enabled, the log shows
-   `MAA plugin ready: format opus-192, cache /data/.cache/maa (max 2 GB)`.
+   `MAA plugin ready: format opus-192, normalisation n-14, cache /data/.cache/maa (max 2 GB)`.
+
+Changing the normalisation setting changes the `variant`, which is part of every cache key.
+Files cached under the old setting are never served again and age out of the cache (or clear
+them with the button). The app puts the `variant` from `/maa/info` into its own cache key, so
+phones re-download too. The upgrade from 0.1.0 works the same way: every 0.1.0 file becomes
+unreachable, so press **Clear transcode cache** once after upgrading to free the space
+straight away.
 
 Changing any option reloads the plugin. Running transcodes are cancelled and their partial
 files deleted, and the next request starts them again.

@@ -2,7 +2,7 @@
   "config_entries": {
     "output_format": {
       "label": "Output format",
-      "description": "Format of the files served to the app. Opus is small and transparent at 192 kbps or more; FLAC 16-bit / 44.1 kHz is lossless at CD quality (CD-quality FLAC files are served untouched).",
+      "description": "Format of the files served to the app. Opus is small and transparent at 192 kbps or more; FLAC 16-bit / 44.1 kHz is lossless at CD quality (with normalisation off, CD-quality FLAC files are served untouched).",
       "options": {
         "opus": "Opus (Ogg)",
         "flac": "FLAC 16-bit / 44.1 kHz"
@@ -11,6 +11,14 @@
     "opus_bitrate": {
       "label": "Opus bitrate (kbps)",
       "description": "Target bitrate for Opus output (VBR), 64 to 320 kbps."
+    },
+    "volume_normalization": {
+      "label": "Volume normalisation",
+      "description": "Bring every track to the same loudness, like Music Assistant does for its own players. Uses Music Assistant's loudness analysis when it has one, otherwise measures the track (EBU R128) before encoding. A limiter is added only when a boosted track would peak above -1 dBTP. When off, tracks are served at their original level (and CD-quality FLAC as-is)."
+    },
+    "target_loudness": {
+      "label": "Target loudness (LUFS)",
+      "description": "Loudness to normalise to. Defaults to Music Assistant's own volume normalisation target (Settings > Core > Streams)."
     },
     "cache_max_gb": {
       "label": "Maximum cache size (GB)",

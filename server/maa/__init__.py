@@ -11,7 +11,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from .formats import FormatSpec, configured_format
+from .formats import NORM_TARGET_RANGE, FormatSpec, Normalization, configured_format
 
 LOGGER = logging.getLogger("music_assistant.providers.maa")
 
@@ -23,6 +23,10 @@ try:
     )
     from music_assistant_models.enums import ConfigEntryType
 
+    from music_assistant.constants import (
+        CONF_ENTRY_VOLUME_NORMALIZATION_TARGET,
+        CONF_VOLUME_NORMALIZATION_TARGET,
+    )
     from music_assistant.models.plugin import PluginProvider
 
     from .routes import MaaApi
@@ -48,6 +52,8 @@ CONF_OUTPUT_FORMAT = "output_format"
 CONF_OPUS_BITRATE = "opus_bitrate"
 CONF_CACHE_MAX_GB = "cache_max_gb"
 CONF_ACTION_CLEAR_CACHE = "clear_cache"
+CONF_VOLUME_NORMALIZATION = "volume_normalization"
+CONF_TARGET_LOUDNESS = "target_loudness"
 
 DEFAULT_OUTPUT_FORMAT = "opus"
 DEFAULT_OPUS_BITRATE = 192
@@ -86,7 +92,7 @@ class MaaProvider(PluginProvider):
                 description=(
                     "Format of the files served to the app. Opus is small and transparent at "
                     "192 kbps or more; FLAC 16-bit / 44.1 kHz is lossless at CD quality "
-                    "(CD-quality FLAC files are served untouched)."
+                    "(with normalisation off, CD-quality FLAC files are served untouched)."
                 ),
                 default_value=DEFAULT_OUTPUT_FORMAT,
                 options=[
@@ -104,6 +110,33 @@ class MaaProvider(PluginProvider):
                 range=(64, 320),
                 depends_on=CONF_OUTPUT_FORMAT,
                 depends_on_value="opus",
+                required=True,
+            ),
+            ConfigEntry(
+                key=CONF_VOLUME_NORMALIZATION,
+                type=ConfigEntryType.BOOLEAN,
+                label="Volume normalisation",
+                description=(
+                    "Bring every track to the same loudness, like Music Assistant does for its "
+                    "own players. Uses Music Assistant's loudness analysis when it has one, "
+                    "otherwise measures the track (EBU R128) before encoding. A limiter is "
+                    "added only when a boosted track would peak above -1 dBTP. When off, "
+                    "tracks are served at their original level (and CD-quality FLAC as-is)."
+                ),
+                default_value=True,
+                required=True,
+            ),
+            ConfigEntry(
+                key=CONF_TARGET_LOUDNESS,
+                type=ConfigEntryType.INTEGER,
+                label="Target loudness (LUFS)",
+                description=(
+                    "Loudness to normalise to. Defaults to Music Assistant's own volume "
+                    "normalisation target (Settings > Core > Streams)."
+                ),
+                default_value=self._ma_target_loudness(),
+                range=self._target_range(),
+                depends_on=CONF_VOLUME_NORMALIZATION,
                 required=True,
             ),
             ConfigEntry(
@@ -137,6 +170,39 @@ class MaaProvider(PluginProvider):
             self.get_config_value(CONF_OPUS_BITRATE, DEFAULT_OPUS_BITRATE),
         )
 
+    def _target_range(self) -> tuple[int, int]:
+        """Return Music Assistant's allowed range for the normalisation target."""
+        return CONF_ENTRY_VOLUME_NORMALIZATION_TARGET.range or NORM_TARGET_RANGE
+
+    def _valid_target(self, value: object) -> int | None:
+        """Return value as a target in range (MA's own check: low <= v < high), else None."""
+        try:
+            target = int(value)  # type: ignore[call-overload]
+        except (TypeError, ValueError):
+            return None
+        low, high = self._target_range()
+        return target if low <= target < high else None
+
+    def _ma_target_loudness(self) -> int:
+        """Return Music Assistant's global volume normalisation target (LUFS)."""
+        try:
+            value = self.mass.streams.get_config_value(CONF_VOLUME_NORMALIZATION_TARGET)
+        except Exception:
+            value = None
+        if (target := self._valid_target(value)) is not None:
+            return target
+        default = self._valid_target(CONF_ENTRY_VOLUME_NORMALIZATION_TARGET.default_value)
+        return default if default is not None else -14
+
+    @property
+    def normalization(self) -> Normalization:
+        """Return the configured volume normalisation."""
+        enabled = bool(self.get_config_value(CONF_VOLUME_NORMALIZATION, True))
+        target = self._valid_target(self.get_config_value(CONF_TARGET_LOUDNESS, None))
+        if target is None:
+            target = self._ma_target_loudness()
+        return Normalization(enabled=enabled, target=target)
+
     @property
     def cache_max_bytes(self) -> int:
         """Return the configured maximum cache size in bytes."""
@@ -156,8 +222,9 @@ class MaaProvider(PluginProvider):
         await self.transcode_cache.setup()
         self._unregister_routes = MaaApi(self).register()
         self.logger.info(
-            "MAA plugin ready: format %s, cache %s (max %s GB)",
+            "MAA plugin ready: format %s, normalisation %s, cache %s (max %s GB)",
             self.configured_format.name,
+            self.normalization.variant,
             cache_dir,
             self.cache_max_bytes // GIB,
         )
